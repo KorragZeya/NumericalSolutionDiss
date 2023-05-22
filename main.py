@@ -21,52 +21,63 @@ def q(k, dt):
         return 0
 
 
+
 def numerical_solution():
-    L = 2
-    Nx = 100
-    end_index = Nx - 1
-    t = 9.9 * 86000
-    dt = 100
+    L1, L2, L3, L4 = 0.10, 0.20, 1.20, 1.00
+    L = L1 + L2 + L3 + L4
+    # L = 3
+    t = 1.4 * 86400
+    dt = 25
     Nt = int(t / dt)
-    dx = L / Nx
+    dx = 0.01
+    Nx = int(L/dx)
+    end_index = Nx - 1
     Initial = np.full(Nx, 273)
-    lambdas_h = np.full(Nx + 1, 0.7)
+
+    λ1, λ2, λ3, λ4 = 0.7, 0.9, 0.7, 1.7
+    # lambdas_h = np.full(Nx + 1, 0.7)
+    lambda_i = [0.07] + [λ1 for _ in range(int(L1 / dx))] + \
+               [λ2 for _ in range(int(L2 /dx))] + \
+               [λ3 for _ in range(int(L3 / dx))] + \
+               [λ4 for _ in range(int(L4 / dx))] + [λ4]
+
+    lambdas_h = np.array([2 * lambda_i[i] * lambda_i[i + 1] / (lambda_i[i] + lambda_i[i + 1]) for i in range(Nx + 1)])
+
     Cs = 2006200
     Cw = 4200000
     F = 0
 
-    Tair = lambda k: 287 + 5 * np.sin((2 * 3.14 / 86400) * k * dt) #функция температуры воздуха
+    Tair = lambda k: 288 + 5 * np.sin((2 * 3.14 / 86400) * k * dt)
 
     M = np.zeros((Nx, Nx), dtype=float)
 
-
     for k in range(Nt):
-        alphar = 10*(Initial[0] - Tair(k))**0.33 if Initial[0] > Tair(k) else 0# коэффициент теплопередачи между поверхностью и воздухом
-        print(Initial[0] - 273, q(k, dt))
+        alpha = 10 * (Initial[0] - Tair(k))**0.33 if Initial[0] > Tair(k) else 10 * (Tair(k) - Initial[0])**0.33
         for i in range(Nx):
             a = -(dt / dx ** 2) * lambdas_h[i]
             c = -(dt / dx ** 2) * lambdas_h[i + 1]
             b = Cs - c - a
-            if i == 0: #здесь находятся коэффициенты b и c для первой строки
-                M[0][0] = b - a*(2*dx/lambdas_h[0])*0.83*5.7*10**(-8)*Initial[0]**3 - a*(2*dx/lambdas_h[0])*alphar
-                M[0][1] = a + c
-            elif i == Nx - 1: #здесь находятся коэффициенты a и b для последней строки
+            if i == 0:
+                M[0][0] = b + a
+                M[0][1] = c
+            elif i == Nx - 1:
                 M[end_index][end_index - 1] = a
                 M[end_index][end_index] = b + c
             else:
                 M[i][i - 1] = a
                 M[i][i] = b
                 M[i][i + 1] = c
-
+        print(Initial[0] - 273)
         D = np.array([Cs * Initial[0]
-                      - a*(2*dx/lambdas_h[0])*0.83*0.8*5.7*10**(-8)*Tair(k)**4
-                      - a*(2*dx/lambdas_h[0])*q(k, dt)
-                      - a*(2*dx/lambdas_h[0])*alphar*Tair(k)
-                        # выше считается, чему равен первый коэффициент вектора D
-                      if i == 0
-                      else Cs * Initial[i] for i in range(Nx)], dtype=float)
-        Initial = np.copy(sp.sparse.csr_matrix(sp.linalg.inv(M)).dot(D)) #здесь считается произведение обратной матрицы М на D
+                      - a * (dx / lambdas_h[0]) * 0.83 * 0.8 * 5.7 * 10 ** (-8) * Tair(k) ** 4
+                      + a * (dx / lambdas_h[0]) * 0.83 * 5.7 * 10 ** (-8) * Initial[0] ** 4
+                      - a * (dx/lambdas_h[0]) * q(k, dt)
+                      + a * (dx / lambdas_h[0]) * alpha * (Initial[0] - Tair(k))
+                      if i == 0 else Cs * Initial[i] for i in range(Nx)], dtype=float)
 
+        Initial = np.copy(sp.sparse.csr_matrix(sp.linalg.inv(M)).dot(D))
+
+    print(type(float(Initial[2])))
 
     for i in range(Nx):
         sheet.cell(row=i + 1, column=1).value = float(Initial[i]) - 273
